@@ -138,6 +138,11 @@ if(!('BarcodeDetector' in window)){
   .setup-item .meta{display:flex;gap:10px;margin-top:8px;font-size:12px;color:var(--text-dim);}
   .setup-item .meta .code{color:var(--warn);}
   .setup-item .del{background:none;border:none;color:var(--danger);font-size:12px;cursor:pointer;padding:0;}
+  .setup-item .ctl{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+  .setup-item .ctl button{background:none;border:none;color:var(--text-dim);font-size:15px;cursor:pointer;padding:2px 4px;}
+  .setup-item .ctl button:disabled{opacity:0.25;cursor:default;}
+  .setup-item .ctl .edit{font-size:12px;color:var(--hazard);}
+  .setup-item .drag{cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;font-size:18px;color:var(--text-dim);padding:0 4px;}
 
   .print-grid{display:none;}
   @media print{
@@ -444,15 +449,41 @@ $('addStationBtn').addEventListener('click', async ()=>{
   showStationModal(newStation, list.length);
 });
 
+let editingCode = null;
+async function moveStation(from, to){
+  const list = await getChallenges();
+  if(from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) return;
+  const [x] = list.splice(from,1);
+  list.splice(to,0,x);
+  await saveChallenges(list);
+  loadSetupList();
+}
 async function loadSetupList(){
   const list = await getChallenges();
   const el = $('setupList');
   if(!list.length){ el.innerHTML = '<div class="empty">No stations yet. Add your first one above.</div>'; return; }
-  el.innerHTML = `<button class="btn secondary full" id="printAllBtn" style="margin-bottom:10px;">Print all QR codes (${list.length})</button>` + list.map((c,i)=>`
-    <div class="setup-item">
+  el.innerHTML = `<button class="btn secondary full" id="printAllBtn" style="margin-bottom:10px;">Print all QR codes (${list.length})</button>
+    <div class="hint" style="margin:0 0 10px;">Stations are played in this order. Drag ⠿ or use ▲ ▼ to reorder.</div>` + list.map((c,i)=>{
+    if(c.code === editingCode){
+      return `<div class="setup-item" data-code="${c.code}">
+        <div class="field"><label>Station name</label><input type="text" class="ed-name"></div>
+        <div class="field"><label>Challenge / task</label><textarea class="ed-task"></textarea></div>
+        <div class="field"><label>Points</label><input type="number" class="ed-pts" min="1"></div>
+        <button class="btn full ed-save">Save changes</button>
+        <button class="btn ghost full ed-cancel" style="margin-top:8px;">Cancel</button>
+      </div>`;
+    }
+    return `
+    <div class="setup-item" data-code="${c.code}">
       <div class="row1">
         <div class="nm">${i+1}. ${escapeHtml(c.name)}</div>
-        <button class="del" data-code="${c.code}">Remove</button>
+        <div class="ctl">
+          <span class="drag" title="Drag to reorder">⠿</span>
+          <button class="up" ${i===0?'disabled':''} aria-label="Move up">▲</button>
+          <button class="down" ${i===list.length-1?'disabled':''} aria-label="Move down">▼</button>
+          <button class="edit">Edit</button>
+          <button class="del" data-code="${c.code}">Remove</button>
+        </div>
       </div>
       <div class="task">${escapeHtml(c.task)}</div>
       <div class="meta"><span>${c.points} pts</span><span class="code">code: ${c.code}</span></div>
@@ -460,8 +491,9 @@ async function loadSetupList(){
         <div class="stqr" data-code="${c.code}" style="background:#fff;padding:6px;border-radius:6px;line-height:0;"></div>
         <button class="btn ghost printone" data-code="${c.code}" style="padding:8px 12px;font-size:13px;">Print this QR</button>
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
+
   list.forEach(c=>{
     const box = el.querySelector('.stqr[data-code="'+c.code+'"]');
     if(box) new QRCode(box, { text: stationQrText(c), width:150, height:150, correctLevel: QRCode.CorrectLevel.M });
@@ -476,6 +508,74 @@ async function loadSetupList(){
       loadSetupList();
     });
   });
+
+  // arrows
+  const itemIndex = node => [...el.querySelectorAll('.setup-item')].indexOf(node.closest('.setup-item'));
+  el.querySelectorAll('.up').forEach(b=> b.addEventListener('click', ()=>{ const i = itemIndex(b); moveStation(i, i-1); }));
+  el.querySelectorAll('.down').forEach(b=> b.addEventListener('click', ()=>{ const i = itemIndex(b); moveStation(i, i+1); }));
+
+  // drag and drop (pointer events: works with mouse and touch)
+  el.querySelectorAll('.drag').forEach(h=>{
+    h.addEventListener('pointerdown', e=>{
+      e.preventDefault();
+      const items = [...el.querySelectorAll('.setup-item')];
+      const item = h.closest('.setup-item');
+      const from = items.indexOf(item);
+      let to = from;
+      item.style.opacity = '0.6';
+      try{ h.setPointerCapture(e.pointerId); }catch(err){}
+      const move = ev=>{
+        items.forEach(it=>{ it.style.outline = ''; });
+        const y = ev.clientY;
+        let t = items.findIndex(it=>{ const r = it.getBoundingClientRect(); return y >= r.top && y <= r.bottom; });
+        if(t === -1) t = (y < items[0].getBoundingClientRect().top) ? 0 : items.length-1;
+        to = t;
+        if(to !== from) items[to].style.outline = '2px solid var(--hazard)';
+        if(y < 80) window.scrollBy(0,-12); else if(y > window.innerHeight-80) window.scrollBy(0,12);
+      };
+      const end = async ()=>{
+        h.removeEventListener('pointermove', move);
+        h.removeEventListener('pointerup', end);
+        h.removeEventListener('pointercancel', cancel);
+        items.forEach(it=>{ it.style.outline=''; it.style.opacity=''; });
+        if(to !== from) await moveStation(from, to);
+      };
+      const cancel = ()=>{
+        h.removeEventListener('pointermove', move);
+        h.removeEventListener('pointerup', end);
+        h.removeEventListener('pointercancel', cancel);
+        items.forEach(it=>{ it.style.outline=''; it.style.opacity=''; });
+      };
+      h.addEventListener('pointermove', move);
+      h.addEventListener('pointerup', end);
+      h.addEventListener('pointercancel', cancel);
+    });
+  });
+
+  // edit
+  el.querySelectorAll('.edit').forEach(b=>{
+    b.addEventListener('click', ()=>{ editingCode = b.closest('.setup-item').dataset.code; loadSetupList(); });
+  });
+  const form = el.querySelector('.setup-item[data-code="'+editingCode+'"] .ed-name');
+  if(editingCode && form){
+    const item = form.closest('.setup-item');
+    const c = list.find(x=>x.code === editingCode);
+    item.querySelector('.ed-name').value = c.name;
+    item.querySelector('.ed-task').value = c.task;
+    item.querySelector('.ed-pts').value = c.points;
+    item.querySelector('.ed-cancel').addEventListener('click', ()=>{ editingCode = null; loadSetupList(); });
+    item.querySelector('.ed-save').addEventListener('click', async ()=>{
+      const name = item.querySelector('.ed-name').value.trim();
+      const task = item.querySelector('.ed-task').value.trim();
+      const pts = parseInt(item.querySelector('.ed-pts').value, 10);
+      if(!name || !task || !(pts > 0)){ alert('Name, challenge, and points (1 or more) are required.'); return; }
+      const fresh = await getChallenges();
+      const t = fresh.find(x=>x.code === editingCode);
+      if(t){ t.name = name; t.task = task; t.points = pts; await saveChallenges(fresh); }
+      editingCode = null;
+      loadSetupList();
+    });
+  }
 }
 
 // ---------- reset buttons ----------
