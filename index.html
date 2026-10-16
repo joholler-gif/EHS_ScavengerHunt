@@ -3,11 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
-<title>EHS Scavenger Hunt — Lab Safety Scavenger Hunt</title>
+<title>Field Hunt — Lab Safety Scavenger Hunt</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js"></script>
+<script>
+// Safari/iPhone has no built-in BarcodeDetector: load a ZXing-based polyfill there
+if(!('BarcodeDetector' in window)){
+  const sc = document.createElement('script');
+  sc.src = 'https://cdn.jsdelivr.net/npm/barcode-detector@3/dist/iife/polyfill.min.js';
+  document.head.appendChild(sc);
+}
+</script>
 <style>
   :root{
     --bg:#101512;
@@ -150,7 +158,7 @@
 
 <div class="app">
   <header>
-    <h1>🧪 EHS Scavenger Hunt</h1>
+    <h1>🧪 Field Hunt</h1>
     <p>A QR scavenger hunt for lab safety challenges</p>
   </header>
 
@@ -634,19 +642,19 @@ $('scanBtn').addEventListener('click', async ()=>{
 let lastScanData = '', lastScanTime = 0, lastScanTick = 0, scanBusy = false;
 let scanCanvas = null, scanCtx = null, barcodeDet = null;
 async function decodeFrame(v){
-  if(barcodeDet === null){
-    try{ barcodeDet = ('BarcodeDetector' in window) ? new BarcodeDetector({ formats:['qr_code'] }) : false; }
-    catch(e){ barcodeDet = false; }
+  // detector may appear a moment after load (polyfill on iPhone), so check each time
+  if(!barcodeDet && ('BarcodeDetector' in window)){
+    try{ barcodeDet = new BarcodeDetector({ formats:['qr_code'] }); }catch(e){ barcodeDet = null; }
   }
-  if(barcodeDet){
-    try{ const r = await barcodeDet.detect(v); if(r && r.length && r[0].rawValue) return r[0].rawValue; }catch(e){}
-  }
-  // jsQR fallback (works in any browser)
-  const scale = Math.min(1, 960 / v.videoWidth);
+  const scale = Math.min(1, 1280 / v.videoWidth);
   const w = Math.round(v.videoWidth*scale), h = Math.round(v.videoHeight*scale);
   if(!scanCanvas){ scanCanvas = document.createElement('canvas'); scanCtx = scanCanvas.getContext('2d', { willReadFrequently:true }); }
   scanCanvas.width = w; scanCanvas.height = h;
   scanCtx.drawImage(v,0,0,w,h);
+  if(barcodeDet){
+    try{ const r = await barcodeDet.detect(scanCanvas); if(r && r.length && r[0].rawValue) return r[0].rawValue; }catch(e){}
+  }
+  // last resort: jsQR
   const img = scanCtx.getImageData(0,0,w,h);
   const res = jsQR(img.data, w, h, { inversionAttempts:'attemptBoth' });
   return (res && res.data) ? res.data : null;
@@ -655,7 +663,7 @@ async function scanLoop(){
   if(!camStream) return;
   const v = $('camVideo');
   const now = Date.now();
-  if(!scanBusy && v.readyState === v.HAVE_ENOUGH_DATA && v.videoWidth && now - lastScanTick > 120){
+  if(!scanBusy && v.readyState >= v.HAVE_CURRENT_DATA && v.videoWidth && now - lastScanTick > 120){
     lastScanTick = now; scanBusy = true;
     try{
       const data = await decodeFrame(v);
