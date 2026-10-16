@@ -236,6 +236,13 @@
         <button class="btn full" id="addStationBtn">Add station</button>
       </div>
       <div id="setupList"></div>
+      <div class="card" style="margin-top:16px;">
+        <h3 style="margin:0 0 8px;">Reset game data</h3>
+        <div style="color:var(--text-dim);font-size:13px;margin-bottom:10px;">Use before the real event to clear test data. Deletions can't be undone.</div>
+        <button class="btn ghost full" id="resetPlayersBtn" style="margin-bottom:8px;">Reset players &amp; scores</button>
+        <button class="btn ghost full" id="resetStationsBtn">Reset stations</button>
+        <div id="resetMsg" style="margin-top:8px;font-size:13px;color:var(--text-dim);"></div>
+      </div>
       </div>
     </div>
 
@@ -289,7 +296,7 @@
 // ---------- Shared storage shim (Firebase Realtime Database via REST) ----------
 // Paste your Firebase Realtime Database URL below (no trailing slash), e.g.
 // https://your-project-default-rtdb.firebaseio.com
-const FIREBASE_DB_URL = 'https://ehs-scavengerhunt-default-rtdb.firebaseio.com';
+const FIREBASE_DB_URL = 'https://ehs-scavengerhunt-default-rtdb.firebaseio.com/';
 (function(){
   if (window.storage) return; // inside Claude artifacts the native API exists
   const ROOT = '/fieldhunt';
@@ -426,6 +433,27 @@ async function loadSetupList(){
     });
   });
 }
+
+// ---------- reset buttons ----------
+$('resetPlayersBtn').addEventListener('click', async ()=>{
+  if(!confirm('Delete ALL players and scores? This cannot be undone.')) return;
+  const msg = $('resetMsg'); msg.textContent = 'Clearing players…';
+  try{
+    const res = await window.storage.list('sc_player:', SHARED);
+    const keys = (res && res.keys) ? res.keys : [];
+    for(const k of keys){ await window.storage.delete(k, SHARED); }
+    msg.textContent = 'Cleared ' + keys.length + ' player(s). Ask any active players to refresh their page.';
+  }catch(e){ msg.textContent = 'Could not clear players: ' + e.message; }
+});
+$('resetStationsBtn').addEventListener('click', async ()=>{
+  if(!confirm('Delete ALL stations? Printed QR codes will stop working. This cannot be undone.')) return;
+  const msg = $('resetMsg'); msg.textContent = 'Clearing stations…';
+  try{
+    await saveChallenges([]);
+    msg.textContent = 'All stations cleared.';
+    loadSetupList();
+  }catch(e){ msg.textContent = 'Could not clear stations: ' + e.message; }
+});
 
 function escapeHtml(s){
   return s.replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
