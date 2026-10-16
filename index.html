@@ -181,6 +181,7 @@
           <div>
             <div class="who">Playing as</div>
             <div class="name" id="scoreName">—</div>
+            <a href="#" id="switchPlayer" style="font-size:12px;color:var(--text-dim);">Not you? Switch player</a>
           </div>
           <div class="score"><span id="scoreVal">0</span><span> pts</span></div>
         </div>
@@ -241,6 +242,7 @@
         <div style="color:var(--text-dim);font-size:13px;margin-bottom:10px;">Use before the real event to clear test data. Deletions can't be undone.</div>
         <button class="btn ghost full" id="resetPlayersBtn" style="margin-bottom:8px;">Reset players &amp; scores</button>
         <button class="btn ghost full" id="resetStationsBtn">Reset stations</button>
+        <button class="btn ghost full" id="lockOrgBtn" style="margin-top:8px;">Lock organizer on this device</button>
         <div id="resetMsg" style="margin-top:8px;font-size:13px;color:var(--text-dim);"></div>
       </div>
       </div>
@@ -353,6 +355,13 @@ const ORGANIZER_PASSCODE = 'LABSAFE2026'; // change this before sharing
 let organizerUnlocked = false;
 const SHARED = true;
 const PERSONAL = false;
+// remember this device's player name / organizer unlock (browser localStorage; safe if blocked)
+const ls = {
+  get(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } },
+  set(k,v){ try{ localStorage.setItem(k,v); }catch(e){} },
+  del(k){ try{ localStorage.removeItem(k); }catch(e){} }
+};
+let autoStarting = false;
 let state = { name:'', score:0, completed:[], challenges:[], pendingCode:null };
 let camStream = null, camRAF = null;
 
@@ -378,10 +387,11 @@ function applyLock(){
 }
 $('unlockBtn').addEventListener('click', ()=>{
   if($('passInput').value.trim() === ORGANIZER_PASSCODE){
-    organizerUnlocked = true; $('passMsg').textContent=''; applyLock(); loadSetupList();
+    organizerUnlocked = true; ls.set('fh_org','1'); $('passMsg').textContent=''; applyLock(); loadSetupList();
   } else { $('passMsg').textContent = 'Incorrect passcode.'; }
 });
 $('passInput').addEventListener('keydown', e=>{ if(e.key==='Enter') $('unlockBtn').click(); });
+if(ls.get('fh_org') === '1') organizerUnlocked = true;
 applyLock();
 
 // ---------- storage helpers ----------
@@ -523,11 +533,12 @@ $('startBtn').addEventListener('click', async ()=>{
   if(!name) return;
   state.challenges = await getChallenges();
   if(!state.challenges.length){
-    alert('The hunt is not ready yet — no challenge stations have been added. Check with your organizer.');
+    if(!autoStarting) alert('The hunt is not ready yet — no challenge stations have been added. Check with your organizer.');
     return;
   }
   const existing = await getPlayer(name);
   state.name = name;
+  ls.set('fh_name', name);
   state.score = existing ? existing.score : 0;
   state.completed = existing ? existing.completed : [];
   $('playGate').style.display='none';
@@ -734,6 +745,23 @@ $('genPrintBtn').addEventListener('click', async ()=>{
   });
 });
 $('doPrintBtn').addEventListener('click', ()=> window.print());
+
+$('switchPlayer').addEventListener('click', e=>{
+  e.preventDefault(); ls.del('fh_name'); location.reload();
+});
+$('lockOrgBtn').addEventListener('click', ()=>{
+  ls.del('fh_org'); organizerUnlocked = false; applyLock();
+});
+// auto sign-in with the remembered name
+(function(){
+  const saved = ls.get('fh_name');
+  if(saved){
+    $('nameInput').value = saved;
+    autoStarting = true;
+    $('startBtn').click();
+    setTimeout(()=>{ autoStarting = false; }, 5000);
+  }
+})();
 
 // auto-fill link fields from this page's own address
 (function(){
