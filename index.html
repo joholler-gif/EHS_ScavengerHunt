@@ -254,18 +254,18 @@
       <div class="organizer-only" style="display:none;">
       <div class="card">
         <h3 style="margin-top:0;">Player join QR code</h3>
-        <p class="hint" style="margin-top:0;">Paste the published link to this hunt, then generate a QR code that players scan with their phone camera to open it.</p>
+        <p class="hint" style="margin-top:0;">This page's address is filled in automatically. Generate a QR code that players scan with their phone camera to open the hunt.</p>
         <div class="field">
           <label>Published hunt link</label>
-          <input type="text" id="joinUrl" placeholder="https://claude.ai/public/artifacts/...">
+          <input type="text" id="joinUrl" placeholder="Auto-detected when hosted">
         </div>
         <button class="btn full" id="genJoinBtn">Generate join QR</button>
         <div id="joinQr" style="display:flex;justify-content:center;margin-top:14px;background:#fff;border-radius:6px;padding:14px;display:none;"></div>
       </div>
       <div class="card">
         <div class="field">
-          <label>App URL (optional — only if you've hosted this page somewhere)</label>
-          <input type="text" id="baseUrl" placeholder="https://yourdomain.com/lab-hunt.html">
+          <label>App URL (filled in automatically from this page — edit only if needed)</label>
+          <input type="text" id="baseUrl" placeholder="Auto-detected when hosted">
         </div>
         <p class="hint">Leave blank and the printed codes work with the in-app "Scan a QR code" button. Add a URL if you want printed codes to also open directly in a phone's regular camera app once this page is hosted somewhere with a public link.</p>
         <button class="btn full" id="genPrintBtn">Generate printable sheet</button>
@@ -276,6 +276,18 @@
     </div>
 
   </main>
+</div>
+
+<div id="qrModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center;padding:16px;">
+  <div class="card" style="max-width:340px;width:100%;text-align:center;margin:0;">
+    <h3 style="margin:0 0 4px;">Station added</h3>
+    <div id="qrModalName" style="font-weight:700;"></div>
+    <div id="qrModalCode" style="color:var(--warn);font-size:12px;margin:2px 0 10px;"></div>
+    <div id="qrModalQr" style="display:inline-block;background:#fff;padding:12px;border-radius:6px;"></div>
+    <div id="qrModalNote" class="hint" style="margin:10px 0;word-break:break-all;"></div>
+    <button class="btn full" id="qrModalPrint">Print this QR</button>
+    <button class="btn ghost full" id="qrModalClose" style="margin-top:8px;">Close (print later from the station list)</button>
+  </div>
 </div>
 
 <div class="print-grid" id="printGrid"></div>
@@ -296,7 +308,7 @@
 // ---------- Shared storage shim (Firebase Realtime Database via REST) ----------
 // Paste your Firebase Realtime Database URL below (no trailing slash), e.g.
 // https://your-project-default-rtdb.firebaseio.com
-const FIREBASE_DB_URL = 'https://ehs-scavengerhunt-default-rtdb.firebaseio.com/';
+const FIREBASE_DB_URL = 'https://ehs-scavengerhunt-default-rtdb.firebaseio.com';
 (function(){
   if (window.storage) return; // inside Claude artifacts the native API exists
   const ROOT = '/fieldhunt';
@@ -404,17 +416,19 @@ $('addStationBtn').addEventListener('click', async ()=>{
   const pts = parseInt($('newPts').value)||10;
   if(!name || !task) return;
   const list = await getChallenges();
-  list.push({ code: genCode(), name, task, points: pts });
+  const newStation = { code: genCode(), name, task, points: pts };
+  list.push(newStation);
   await saveChallenges(list);
   $('newName').value=''; $('newTask').value=''; $('newPts').value='10';
   loadSetupList();
+  showStationModal(newStation, list.length);
 });
 
 async function loadSetupList(){
   const list = await getChallenges();
   const el = $('setupList');
   if(!list.length){ el.innerHTML = '<div class="empty">No stations yet. Add your first one above.</div>'; return; }
-  el.innerHTML = list.map((c,i)=>`
+  el.innerHTML = `<button class="btn secondary full" id="printAllBtn" style="margin-bottom:10px;">Print all QR codes (${list.length})</button>` + list.map((c,i)=>`
     <div class="setup-item">
       <div class="row1">
         <div class="nm">${i+1}. ${escapeHtml(c.name)}</div>
@@ -422,8 +436,18 @@ async function loadSetupList(){
       </div>
       <div class="task">${escapeHtml(c.task)}</div>
       <div class="meta"><span>${c.points} pts</span><span class="code">code: ${c.code}</span></div>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:10px;">
+        <div class="stqr" data-code="${c.code}" style="background:#fff;padding:6px;border-radius:6px;line-height:0;"></div>
+        <button class="btn ghost printone" data-code="${c.code}" style="padding:8px 12px;font-size:13px;">Print this QR</button>
+      </div>
     </div>
   `).join('');
+  list.forEach(c=>{
+    const box = el.querySelector('.stqr[data-code="'+c.code+'"]');
+    if(box) new QRCode(box, { text: stationQrText(c), width:96, height:96 });
+  });
+  el.querySelectorAll('.printone').forEach(b=> b.addEventListener('click', ()=> printStations(b.dataset.code)));
+  $('printAllBtn').addEventListener('click', ()=> printStations());
   el.querySelectorAll('.del').forEach(b=>{
     b.addEventListener('click', async ()=>{
       let list = await getChallenges();
@@ -454,6 +478,40 @@ $('resetStationsBtn').addEventListener('click', async ()=>{
     loadSetupList();
   }catch(e){ msg.textContent = 'Could not clear stations: ' + e.message; }
 });
+
+// ---------- station QR helpers ----------
+function autoBaseUrl(){
+  if(!/^https?:$/.test(location.protocol)) return '';
+  return location.origin + location.pathname;
+}
+function stationQrText(c){
+  const base = ($('baseUrl').value.trim() || autoBaseUrl());
+  return base ? base + (base.includes('?')?'&':'?') + 'code=' + c.code : c.code;
+}
+async function printStations(onlyCode){
+  const all = await getChallenges();
+  const grid = $('printGrid'); grid.innerHTML = '';
+  all.forEach((c,i)=>{
+    if(onlyCode && c.code !== onlyCode) return;
+    const card = document.createElement('div');
+    card.className = 'print-card';
+    card.innerHTML = `<div class="qrbox"></div><div class="pname">${i+1}. ${escapeHtml(c.name)}</div><div class="pcode">${c.code}</div>`;
+    grid.appendChild(card);
+    new QRCode(card.querySelector('.qrbox'), { text: stationQrText(c), width:150, height:150 });
+  });
+  setTimeout(()=> window.print(), 300);
+}
+function showStationModal(c, n){
+  $('qrModalName').textContent = n + '. ' + c.name;
+  $('qrModalCode').textContent = 'code: ' + c.code;
+  const box = $('qrModalQr'); box.innerHTML = '';
+  const text = stationQrText(c);
+  new QRCode(box, { text, width:220, height:220 });
+  $('qrModalNote').textContent = /^https?:/i.test(text) ? text : 'Open the hosted page (not a local file) so the QR contains a working link. This QR holds only the station code, which works with the in-app scanner.';
+  $('qrModalPrint').onclick = ()=> printStations(c.code);
+  $('qrModal').style.display = 'flex';
+}
+$('qrModalClose').addEventListener('click', ()=>{ $('qrModal').style.display = 'none'; });
 
 function escapeHtml(s){
   return s.replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
@@ -632,7 +690,7 @@ $('genPrintBtn').addEventListener('click', async ()=>{
   const pv = $('previewGrid');
 
   list.forEach((c,i)=>{
-    const content = base ? (base + (base.includes('?')?'&':'?') + 'code=' + c.code) : c.code;
+    const content = stationQrText(c);
 
     const card = document.createElement('div');
     card.className='print-card';
@@ -649,6 +707,12 @@ $('genPrintBtn').addEventListener('click', async ()=>{
   });
 });
 $('doPrintBtn').addEventListener('click', ()=> window.print());
+
+// auto-fill link fields from this page's own address
+(function(){
+  const u = autoBaseUrl();
+  if(u){ $('baseUrl').value = u; $('joinUrl').value = u; }
+})();
 
 // ---------- init: read ?code= from URL if opened via a deep-linked QR ----------
 const urlCode = new URLSearchParams(window.location.search).get('code');
