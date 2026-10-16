@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Field Hunt — Lab Safety Scavenger Hunt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js"></script>
+<style>
+  :root{
+    --bg:#101512;
+    --panel:#1a221e;
+    --panel-2:#212b26;
+    --hazard:#ff7a1a;
+    --bio:#35d0a6;
+    --warn:#f2c94c;
+    --text:#ecefea;
+    --text-dim:#93a099;
+    --border:rgba(236,239,234,0.12);
+    --danger:#ff5c5c;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}
+  h1,h2,h3,.mono{font-family:'Space Grotesk',sans-serif;}
+  code,.code,.station-code{font-family:'IBM Plex Mono',monospace;letter-spacing:0.04em;}
+
+  .app{max-width:640px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;}
+
+  header{
+    padding:22px 20px 16px;
+    border-bottom:1px solid var(--border);
+    position:relative;
+    overflow:hidden;
+  }
+  header::after{
+    content:"";position:absolute;left:0;right:0;bottom:0;height:5px;
+    background:repeating-linear-gradient(135deg,var(--hazard) 0 14px,#101512 14px 28px);
+    opacity:0.9;
+  }
+  header h1{margin:0;font-size:22px;font-weight:700;letter-spacing:-0.01em;}
+  header p{margin:6px 0 0;color:var(--text-dim);font-size:13.5px;}
+
+  nav{display:flex;gap:2px;padding:10px 20px 0;border-bottom:1px solid var(--border);}
+  nav button{
+    flex:1;background:none;border:none;color:var(--text-dim);
+    font-family:'Inter';font-size:13px;font-weight:600;padding:10px 4px;cursor:pointer;
+    border-bottom:2px solid transparent;
+  }
+  nav button.active{color:var(--hazard);border-bottom:2px solid var(--hazard);}
+
+  main{flex:1;padding:20px;padding-bottom:60px;}
+  .view{display:none;}
+  .view.active{display:block;}
+
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:16px;margin-bottom:12px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:12.5px;color:var(--text-dim);margin-bottom:5px;font-weight:600;}
+  input[type=text], input[type=number], textarea{
+    width:100%;background:var(--panel-2);border:1px solid var(--border);border-radius:5px;
+    color:var(--text);font-family:'Inter';font-size:14.5px;padding:10px 11px;
+  }
+  textarea{resize:vertical;min-height:64px;}
+  input:focus,textarea:focus{outline:2px solid var(--hazard);outline-offset:-1px;}
+
+  button.btn{
+    background:var(--hazard);color:#14100a;border:none;border-radius:5px;
+    font-family:'Inter';font-weight:700;font-size:14.5px;padding:11px 16px;cursor:pointer;
+  }
+  button.btn:active{transform:translateY(1px);}
+  button.btn.secondary{background:var(--panel-2);color:var(--text);border:1px solid var(--border);}
+  button.btn.ghost{background:none;color:var(--text-dim);border:1px solid var(--border);}
+  button.btn.full{width:100%;}
+  button.btn:disabled{opacity:0.4;cursor:not-allowed;}
+
+  .station-row{
+    display:flex;align-items:center;gap:12px;padding:13px 14px;background:var(--panel);
+    border:1px solid var(--border);border-left:3px solid var(--border-l,var(--border));
+    border-radius:5px;margin-bottom:8px;
+  }
+  .station-row.done{border-left-color:var(--bio);}
+  .station-row.locked{border-left-color:var(--warn);}
+  .station-num{font-family:'IBM Plex Mono';font-size:12px;color:var(--text-dim);width:26px;flex-shrink:0;}
+  .station-main{flex:1;min-width:0;}
+  .station-name{font-size:14.5px;font-weight:600;}
+  .station-name.hidden-name{color:var(--text-dim);font-weight:500;font-style:italic;}
+  .station-pts{font-family:'IBM Plex Mono';font-size:12px;color:var(--text-dim);}
+  .status-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0;}
+  .status-dot.done{background:var(--bio);}
+  .status-dot.locked{background:var(--warn);opacity:0.6;}
+
+  .score-banner{display:flex;justify-content:space-between;align-items:center;background:var(--panel);
+    border:1px solid var(--border);border-radius:6px;padding:14px 16px;margin-bottom:16px;}
+  .score-banner .who{font-size:13.5px;color:var(--text-dim);}
+  .score-banner .name{font-size:16px;font-weight:700;}
+  .score-banner .score{font-family:'Space Grotesk';font-size:26px;font-weight:700;color:var(--hazard);}
+  .score-banner .score span{font-size:12px;color:var(--text-dim);font-weight:500;font-family:'Inter';}
+
+  .scan-fallback{display:flex;gap:8px;margin-top:10px;}
+  .scan-fallback input{flex:1;text-transform:uppercase;}
+
+  .modal-bg{display:none;position:fixed;inset:0;background:rgba(6,8,7,0.82);z-index:50;
+    align-items:center;justify-content:center;padding:20px;}
+  .modal-bg.active{display:flex;}
+  .modal{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:22px;max-width:420px;width:100%;position:relative;}
+  .modal h3{margin:0 0 4px;font-size:19px;}
+  .modal .pts-tag{display:inline-block;font-family:'IBM Plex Mono';font-size:12px;color:var(--bio);
+    border:1px solid var(--bio);border-radius:20px;padding:2px 10px;margin-bottom:10px;}
+  .modal p{font-size:14.5px;line-height:1.5;color:var(--text);}
+  .modal .actions{display:flex;gap:8px;margin-top:16px;}
+
+  #camWrap{display:none;margin-top:12px;border-radius:6px;overflow:hidden;position:relative;background:#000;}
+  #camWrap video{width:100%;display:block;}
+  #camWrap .frame{position:absolute;inset:18%;border:2px solid var(--hazard);border-radius:8px;pointer-events:none;}
+  #camMsg{font-size:12.5px;color:var(--text-dim);margin-top:6px;}
+
+  .lb-row{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--border);}
+  .lb-row:last-child{border-bottom:none;}
+  .lb-rank{font-family:'IBM Plex Mono';color:var(--text-dim);width:22px;}
+  .lb-name{flex:1;font-weight:600;font-size:14px;}
+  .lb-score{font-family:'IBM Plex Mono';color:var(--hazard);font-weight:600;}
+  .lb-row.me{background:rgba(255,122,26,0.08);border-radius:5px;}
+
+  .setup-item{border:1px solid var(--border);border-radius:6px;padding:12px 14px;margin-bottom:10px;background:var(--panel);}
+  .setup-item .row1{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
+  .setup-item .row1 .nm{font-weight:700;font-size:14.5px;}
+  .setup-item .task{font-size:13px;color:var(--text-dim);margin-top:4px;}
+  .setup-item .meta{display:flex;gap:10px;margin-top:8px;font-size:12px;color:var(--text-dim);}
+  .setup-item .meta .code{color:var(--warn);}
+  .setup-item .del{background:none;border:none;color:var(--danger);font-size:12px;cursor:pointer;padding:0;}
+
+  .print-grid{display:none;}
+  @media print{
+    body *{visibility:hidden;}
+    .print-grid,.print-grid *{visibility:visible;}
+    .print-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;position:absolute;top:0;left:0;width:100%;padding:20px;}
+    .print-card{border:1.5px dashed #444;border-radius:6px;padding:14px;text-align:center;break-inside:avoid;}
+    .print-card .qrbox{display:flex;justify-content:center;margin-bottom:8px;}
+    .print-card .pname{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:14px;}
+    .print-card .pcode{font-family:'IBM Plex Mono',monospace;font-size:11px;color:#555;margin-top:4px;}
+  }
+
+  .empty{text-align:center;color:var(--text-dim);padding:30px 10px;font-size:14px;}
+  .hint{font-size:12.5px;color:var(--text-dim);margin-top:10px;line-height:1.5;}
+  .divider{height:1px;background:var(--border);margin:16px 0;}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <h1>🧪 Field Hunt</h1>
+    <p>A QR scavenger hunt for lab safety challenges</p>
+  </header>
+
+  <nav>
+    <button class="tab-btn active" data-tab="play">Play</button>
+    <button class="tab-btn" data-tab="leaderboard">Leaderboard</button>
+    <button class="tab-btn" data-tab="setup">Setup</button>
+    <button class="tab-btn" data-tab="print">Print QR Codes</button>
+  </nav>
+
+  <main>
+
+    <!-- PLAY -->
+    <div class="view active" id="view-play">
+      <div id="playGate">
+        <div class="card">
+          <div class="field">
+            <label>Your name</label>
+            <input type="text" id="nameInput" placeholder="e.g. Amy R.">
+          </div>
+          <button class="btn full" id="startBtn">Start hunt</button>
+          <p class="hint">Enter the name your teammates will recognize on the leaderboard.</p>
+        </div>
+      </div>
+
+      <div id="playMain" style="display:none;">
+        <div class="score-banner">
+          <div>
+            <div class="who">Playing as</div>
+            <div class="name" id="scoreName">—</div>
+          </div>
+          <div class="score"><span id="scoreVal">0</span><span> pts</span></div>
+        </div>
+
+        <button class="btn full" id="scanBtn">📷 Scan a QR code</button>
+        <div class="scan-fallback">
+          <input type="text" id="manualCode" placeholder="OR TYPE STATION CODE">
+          <button class="btn secondary" id="manualBtn">Submit</button>
+        </div>
+        <div id="camWrap">
+          <video id="camVideo" playsinline muted></video>
+          <div class="frame"></div>
+        </div>
+        <div id="camMsg"></div>
+
+        <div class="divider"></div>
+        <div id="stationList"></div>
+      </div>
+    </div>
+
+    <!-- LEADERBOARD -->
+    <div class="view" id="view-leaderboard">
+      <div class="card" style="padding:0;">
+        <div id="lbList"></div>
+      </div>
+      <button class="btn secondary full" id="refreshLb" style="margin-top:10px;">Refresh</button>
+    </div>
+
+    <!-- SETUP -->
+    <div class="view" id="view-setup">
+      <div class="card organizer-lock" id="lock-setup">
+        <h3 style="margin-top:0;">Organizer access</h3>
+        <p class="hint" style="margin-top:0;">Setup and printable codes are for hunt organizers. Enter the organizer passcode to continue.</p>
+        <div class="field"><input type="text" id="passInput" placeholder="Organizer passcode" autocomplete="off" autocapitalize="off"></div>
+        <button class="btn full" id="unlockBtn">Unlock</button>
+        <div id="passMsg" class="hint" style="color:var(--danger);"></div>
+      </div>
+      <div class="organizer-only" style="display:none;">
+      <div class="card">
+        <h3 style="margin-top:0;">Add a challenge station</h3>
+        <div class="field">
+          <label>Station name (players see this once they scan it)</label>
+          <input type="text" id="newName" placeholder="e.g. Eyewash Station">
+        </div>
+        <div class="field">
+          <label>Challenge / task</label>
+          <textarea id="newTask" placeholder="e.g. Locate the eyewash station and take a photo demonstrating the 15-second flush position."></textarea>
+        </div>
+        <div class="field">
+          <label>Points</label>
+          <input type="number" id="newPts" value="10" min="1">
+        </div>
+        <button class="btn full" id="addStationBtn">Add station</button>
+      </div>
+      <div id="setupList"></div>
+      </div>
+    </div>
+
+    <!-- PRINT -->
+    <div class="view" id="view-print">
+      <div class="card organizer-lock">
+        <p class="hint" style="margin:0;">Organizer passcode required — unlock it from the <b>Setup</b> tab.</p>
+      </div>
+      <div class="organizer-only" style="display:none;">
+      <div class="card">
+        <h3 style="margin-top:0;">Player join QR code</h3>
+        <p class="hint" style="margin-top:0;">Paste the published link to this hunt, then generate a QR code that players scan with their phone camera to open it.</p>
+        <div class="field">
+          <label>Published hunt link</label>
+          <input type="text" id="joinUrl" placeholder="https://claude.ai/public/artifacts/...">
+        </div>
+        <button class="btn full" id="genJoinBtn">Generate join QR</button>
+        <div id="joinQr" style="display:flex;justify-content:center;margin-top:14px;background:#fff;border-radius:6px;padding:14px;display:none;"></div>
+      </div>
+      <div class="card">
+        <div class="field">
+          <label>App URL (optional — only if you've hosted this page somewhere)</label>
+          <input type="text" id="baseUrl" placeholder="https://yourdomain.com/lab-hunt.html">
+        </div>
+        <p class="hint">Leave blank and the printed codes work with the in-app "Scan a QR code" button. Add a URL if you want printed codes to also open directly in a phone's regular camera app once this page is hosted somewhere with a public link.</p>
+        <button class="btn full" id="genPrintBtn">Generate printable sheet</button>
+        <button class="btn secondary full" id="doPrintBtn" style="margin-top:8px;">Print sheet</button>
+      </div>
+      <div id="printPreview"></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<div class="print-grid" id="printGrid"></div>
+
+<!-- Reveal modal -->
+<div class="modal-bg" id="revealModal">
+  <div class="modal">
+    <div class="pts-tag" id="revealPts">+10 pts</div>
+    <h3 id="revealName">Station name</h3>
+    <p id="revealTask">Task text</p>
+    <div class="actions">
+      <button class="btn full" id="claimBtn">I did it — claim points</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const ORGANIZER_PASSCODE = 'LABSAFE2026'; // change this before sharing
+let organizerUnlocked = false;
+const SHARED = true;
+const PERSONAL = false;
+let state = { name:'', score:0, completed:[], challenges:[], pendingCode:null };
+let camStream = null, camRAF = null;
+
+function $(id){ return document.getElementById(id); }
+
+// ---------- tabs ----------
+document.querySelectorAll('.tab-btn').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('.tab-btn').forEach(x=>x.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    $('view-'+b.dataset.tab).classList.add('active');
+    if(b.dataset.tab==='leaderboard') loadLeaderboard();
+    if(b.dataset.tab==='setup' && organizerUnlocked) loadSetupList();
+    stopCamera();
+  });
+});
+
+// ---------- organizer gate ----------
+function applyLock(){
+  document.querySelectorAll('.organizer-only').forEach(e=>e.style.display = organizerUnlocked?'block':'none');
+  document.querySelectorAll('.organizer-lock').forEach(e=>e.style.display = organizerUnlocked?'none':'block');
+}
+$('unlockBtn').addEventListener('click', ()=>{
+  if($('passInput').value.trim() === ORGANIZER_PASSCODE){
+    organizerUnlocked = true; $('passMsg').textContent=''; applyLock(); loadSetupList();
+  } else { $('passMsg').textContent = 'Incorrect passcode.'; }
+});
+$('passInput').addEventListener('keydown', e=>{ if(e.key==='Enter') $('unlockBtn').click(); });
+applyLock();
+
+// ---------- storage helpers ----------
+async function getChallenges(){
+  try{
+    const r = await window.storage.get('sc_challenges', SHARED);
+    return r ? JSON.parse(r.value) : [];
+  }catch(e){ return []; }
+}
+async function saveChallenges(list){
+  await window.storage.set('sc_challenges', JSON.stringify(list), SHARED);
+}
+function genCode(){
+  const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let s=''; for(let i=0;i<5;i++) s+=chars[Math.floor(Math.random()*chars.length)];
+  return s;
+}
+async function getPlayer(name){
+  try{
+    const r = await window.storage.get('sc_player:'+name.toLowerCase(), SHARED);
+    return r ? JSON.parse(r.value) : null;
+  }catch(e){ return null; }
+}
+async function savePlayer(name, data){
+  await window.storage.set('sc_player:'+name.toLowerCase(), JSON.stringify(data), SHARED);
+}
+
+// ---------- setup tab ----------
+$('addStationBtn').addEventListener('click', async ()=>{
+  const name = $('newName').value.trim();
+  const task = $('newTask').value.trim();
+  const pts = parseInt($('newPts').value)||10;
+  if(!name || !task) return;
+  const list = await getChallenges();
+  list.push({ code: genCode(), name, task, points: pts });
+  await saveChallenges(list);
+  $('newName').value=''; $('newTask').value=''; $('newPts').value='10';
+  loadSetupList();
+});
+
+async function loadSetupList(){
+  const list = await getChallenges();
+  const el = $('setupList');
+  if(!list.length){ el.innerHTML = '<div class="empty">No stations yet. Add your first one above.</div>'; return; }
+  el.innerHTML = list.map((c,i)=>`
+    <div class="setup-item">
+      <div class="row1">
+        <div class="nm">${i+1}. ${escapeHtml(c.name)}</div>
+        <button class="del" data-code="${c.code}">Remove</button>
+      </div>
+      <div class="task">${escapeHtml(c.task)}</div>
+      <div class="meta"><span>${c.points} pts</span><span class="code">code: ${c.code}</span></div>
+    </div>
+  `).join('');
+  el.querySelectorAll('.del').forEach(b=>{
+    b.addEventListener('click', async ()=>{
+      let list = await getChallenges();
+      list = list.filter(c=>c.code !== b.dataset.code);
+      await saveChallenges(list);
+      loadSetupList();
+    });
+  });
+}
+
+function escapeHtml(s){
+  return s.replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+// ---------- play tab ----------
+$('startBtn').addEventListener('click', async ()=>{
+  const name = $('nameInput').value.trim();
+  if(!name) return;
+  state.challenges = await getChallenges();
+  if(!state.challenges.length){
+    alert('The hunt is not ready yet — no challenge stations have been added. Check with your organizer.');
+    return;
+  }
+  const existing = await getPlayer(name);
+  state.name = name;
+  state.score = existing ? existing.score : 0;
+  state.completed = existing ? existing.completed : [];
+  $('playGate').style.display='none';
+  $('playMain').style.display='block';
+  $('scoreName').textContent = name;
+  $('scoreVal').textContent = state.score;
+  renderStationList();
+  const dl = new URLSearchParams(location.search).get('code');
+  if(dl) tryCode(dl);
+});
+
+function renderStationList(){
+  const el = $('stationList');
+  if(!state.challenges.length){ el.innerHTML=''; return; }
+  el.innerHTML = state.challenges.map((c,i)=>{
+    const done = state.completed.includes(c.code);
+    return `<div class="station-row ${done?'done':'locked'}">
+      <span class="station-num">${String(i+1).padStart(2,'0')}</span>
+      <span class="status-dot ${done?'done':'locked'}"></span>
+      <div class="station-main">
+        <div class="station-name ${done?'':'hidden-name'}">${done ? escapeHtml(c.name) : 'Not yet found'}</div>
+      </div>
+      <span class="station-pts">${done? '✓ '+c.points : c.points} pts</span>
+    </div>`;
+  }).join('');
+}
+
+async function tryCode(raw){
+  let code = raw.trim().toUpperCase();
+  // handle a scanned URL like https://.../hunt?code=ABCDE
+  const m = code.match(/CODE=([A-Z0-9]+)/);
+  if(m) code = m[1];
+  const found = state.challenges.find(c=>c.code === code);
+  if(!found){
+    $('camMsg').textContent = 'That code doesn\'t match any station. Try again.';
+    return;
+  }
+  if(state.completed.includes(code)){
+    $('camMsg').textContent = `${found.name} — already claimed.`;
+    return;
+  }
+  stopCamera();
+  state.pendingCode = code;
+  $('revealPts').textContent = '+'+found.points+' pts';
+  $('revealName').textContent = found.name;
+  $('revealTask').textContent = found.task;
+  $('revealModal').classList.add('active');
+}
+
+$('claimBtn').addEventListener('click', async ()=>{
+  const code = state.pendingCode;
+  const found = state.challenges.find(c=>c.code===code);
+  if(found && !state.completed.includes(code)){
+    state.completed.push(code);
+    state.score += found.points;
+    $('scoreVal').textContent = state.score;
+    await savePlayer(state.name, { name: state.name, score: state.score, completed: state.completed, updated: Date.now() });
+    renderStationList();
+  }
+  $('revealModal').classList.remove('active');
+});
+
+$('manualBtn').addEventListener('click', ()=>{
+  const v = $('manualCode').value;
+  if(v.trim()) tryCode(v);
+  $('manualCode').value='';
+});
+$('manualCode').addEventListener('keydown', e=>{ if(e.key==='Enter') $('manualBtn').click(); });
+
+// ---------- camera scanning ----------
+$('scanBtn').addEventListener('click', async ()=>{
+  if(camStream){ stopCamera(); return; }
+  $('camMsg').textContent = 'Requesting camera…';
+  try{
+    camStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' } });
+    const v = $('camVideo');
+    v.srcObject = camStream;
+    await v.play();
+    $('camWrap').style.display='block';
+    $('camMsg').textContent = 'Point your camera at a printed QR code.';
+    scanLoop();
+  }catch(e){
+    $('camMsg').textContent = 'Camera unavailable here — use "type station code" below instead (it\'s printed under each QR code).';
+  }
+});
+
+function scanLoop(){
+  const v = $('camVideo');
+  if(!camStream) return;
+  if(v.readyState === v.HAVE_ENOUGH_DATA){
+    const canvas = document.createElement('canvas');
+    canvas.width = v.videoWidth; canvas.height = v.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(v,0,0,canvas.width,canvas.height);
+    const img = ctx.getImageData(0,0,canvas.width,canvas.height);
+    const result = jsQR(img.data, img.width, img.height);
+    if(result && result.data){
+      tryCode(result.data);
+      return;
+    }
+  }
+  camRAF = requestAnimationFrame(scanLoop);
+}
+function stopCamera(){
+  if(camRAF) cancelAnimationFrame(camRAF);
+  if(camStream){ camStream.getTracks().forEach(t=>t.stop()); camStream=null; }
+  $('camWrap').style.display='none';
+}
+
+// ---------- leaderboard ----------
+async function loadLeaderboard(){
+  const el = $('lbList');
+  el.innerHTML = '<div class="empty">Loading…</div>';
+  try{
+    const keys = await window.storage.list('sc_player:', SHARED);
+    if(!keys || !keys.keys || !keys.keys.length){ el.innerHTML = '<div class="empty">No players yet.</div>'; return; }
+    const players = [];
+    for(const k of keys.keys){
+      const r = await window.storage.get(k, SHARED);
+      if(r) players.push(JSON.parse(r.value));
+    }
+    players.sort((a,b)=> b.score - a.score);
+    el.innerHTML = players.map((p,i)=>`
+      <div class="lb-row ${p.name===state.name?'me':''}">
+        <span class="lb-rank">${i+1}</span>
+        <span class="lb-name">${escapeHtml(p.name)}</span>
+        <span class="lb-score">${p.score}</span>
+      </div>`).join('');
+  }catch(e){
+    el.innerHTML = '<div class="empty">Couldn\'t load leaderboard.</div>';
+  }
+}
+$('refreshLb').addEventListener('click', loadLeaderboard);
+
+// ---------- join QR ----------
+$('genJoinBtn').addEventListener('click', ()=>{
+  const url = $('joinUrl').value.trim();
+  const box = $('joinQr');
+  if(!/^https?:\/\//i.test(url)){ alert('Paste the full published link (starting with https://).'); return; }
+  box.innerHTML=''; box.style.display='flex';
+  new QRCode(box, { text:url, width:220, height:220 });
+});
+
+// ---------- print sheet ----------
+$('genPrintBtn').addEventListener('click', async ()=>{
+  const list = await getChallenges();
+  const base = $('baseUrl').value.trim();
+  const grid = $('printGrid');
+  const preview = $('printPreview');
+  if(!list.length){ preview.innerHTML = '<div class="empty">No stations to print yet.</div>'; return; }
+  grid.innerHTML = '';
+  preview.innerHTML = '<p class="hint">Preview below — printed layout may differ slightly. Cut along the dashed lines and post near each challenge location.</p><div id="previewGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;"></div>';
+  const pv = $('previewGrid');
+
+  list.forEach((c,i)=>{
+    const content = base ? (base + (base.includes('?')?'&':'?') + 'code=' + c.code) : c.code;
+
+    const card = document.createElement('div');
+    card.className='print-card';
+    card.innerHTML = `<div class="qrbox"></div><div class="pname">${i+1}. ${escapeHtml(c.name)}</div><div class="pcode">${c.code}</div>`;
+    grid.appendChild(card);
+    new QRCode(card.querySelector('.qrbox'), { text: content, width:120, height:120 });
+
+    const pcard = document.createElement('div');
+    pcard.className='card';
+    pcard.style.textAlign='center';
+    pcard.innerHTML = `<div class="qrbox" style="display:flex;justify-content:center;"></div><div style="font-weight:700;margin-top:6px;">${i+1}. ${escapeHtml(c.name)}</div><div class="code" style="color:var(--text-dim);font-size:12px;margin-top:2px;">${c.code}</div>`;
+    pv.appendChild(pcard);
+    new QRCode(pcard.querySelector('.qrbox'), { text: content, width:110, height:110 });
+  });
+});
+$('doPrintBtn').addEventListener('click', ()=> window.print());
+
+// ---------- init: read ?code= from URL if opened via a deep-linked QR ----------
+const urlCode = new URLSearchParams(window.location.search).get('code');
+if(urlCode){
+  $('startBtn').addEventListener('click', ()=>{
+    setTimeout(()=>{ if(state.name) tryCode(urlCode); }, 300);
+  }, { once:true });
+}
+</script>
+</body>
+</html>
