@@ -89,6 +89,7 @@ if(!('BarcodeDetector' in window)){
   }
   .station-row.done{border-left-color:var(--bio);}
   .station-row.locked{border-left-color:var(--warn);}
+  .station-row.current{border-left-color:var(--hazard);}
   .station-num{font-family:'IBM Plex Mono';font-size:12px;color:var(--text-dim);width:26px;flex-shrink:0;}
   .station-main{flex:1;min-width:0;}
   .station-name{font-size:14.5px;font-weight:600;}
@@ -194,6 +195,7 @@ if(!('BarcodeDetector' in window)){
           <div class="score"><span id="scoreVal">0</span><span> pts</span></div>
         </div>
 
+        <div id="currentCard"></div>
         <button class="btn full" id="scanBtn">📷 Scan a QR code</button>
         <div class="scan-fallback">
           <input type="text" id="manualCode" placeholder="OR TYPE STATION CODE">
@@ -558,16 +560,47 @@ $('startBtn').addEventListener('click', async ()=>{
   if(dl) tryCode(dl);
 });
 
+function currentIndex(){
+  return state.challenges.findIndex(c=>!state.completed.includes(c.code));
+}
+function renderCurrent(){
+  const el = $('currentCard'); if(!el) return;
+  const scanBtn = $('scanBtn'), fb = document.querySelector('.scan-fallback');
+  const total = state.challenges.length;
+  if(!total){ el.innerHTML=''; return; }
+  const i = currentIndex();
+  if(i === -1){
+    el.innerHTML = `<div class="card" style="border-left:4px solid var(--bio);">
+      <div style="font-size:20px;font-weight:700;margin-bottom:4px;">🎉 Hunt complete!</div>
+      <div>You found all ${total} stations. Final score: <b>${state.score} pts</b>.</div></div>`;
+    scanBtn.style.display = 'none'; fb.style.display = 'none';
+    if(camStream) stopCamera();
+    return;
+  }
+  const c = state.challenges[i];
+  scanBtn.style.display = ''; fb.style.display = '';
+  el.innerHTML = `<div class="card" style="border-left:4px solid var(--hazard);">
+    <div style="font-size:12px;letter-spacing:0.08em;color:var(--text-dim);">STATION ${i+1} OF ${total} · ${c.points} PTS</div>
+    <div style="font-size:20px;font-weight:700;margin:4px 0;">${escapeHtml(c.name)}</div>
+    <div style="margin-bottom:10px;">${escapeHtml(c.task)}</div>
+    <div class="hint" style="margin:0;">Go to this station, then scan its QR code or type its code below.</div></div>`;
+}
+
 function renderStationList(){
+  renderCurrent();
   const el = $('stationList');
   if(!state.challenges.length){ el.innerHTML=''; return; }
+  const ci = currentIndex();
   el.innerHTML = state.challenges.map((c,i)=>{
     const done = state.completed.includes(c.code);
-    return `<div class="station-row ${done?'done':'locked'}">
+    const cur = (i === ci);
+    const cls = done ? 'done' : (cur ? 'current' : 'locked');
+    const label = done ? escapeHtml(c.name) : (cur ? escapeHtml(c.name) + ' — current' : '🔒 Locked');
+    return `<div class="station-row ${cls}">
       <span class="station-num">${String(i+1).padStart(2,'0')}</span>
-      <span class="status-dot ${done?'done':'locked'}"></span>
+      <span class="status-dot ${cls}"></span>
       <div class="station-main">
-        <div class="station-name ${done?'':'hidden-name'}">${done ? escapeHtml(c.name) : 'Not yet found'}</div>
+        <div class="station-name ${(done||cur)?'':'hidden-name'}">${label}</div>
       </div>
       <span class="station-pts">${done? '✓ '+c.points : c.points} pts</span>
     </div>`;
@@ -591,6 +624,11 @@ async function tryCode(raw){
   }
   if(state.completed.includes(code)){
     $('camMsg').textContent = `${found.name} — already claimed.`;
+    return;
+  }
+  const ci = currentIndex();
+  if(ci !== -1 && state.challenges[ci].code !== code){
+    $('camMsg').textContent = `That's not your current station. Find station ${ci+1} first.`;
     return;
   }
   stopCamera();
