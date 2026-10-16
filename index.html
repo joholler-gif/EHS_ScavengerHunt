@@ -150,7 +150,7 @@
 
 <div class="app">
   <header>
-    <h1>🧪 EHS Scavenger Hunt</h1>
+    <h1>🧪 Field Hunt</h1>
     <p>A QR scavenger hunt for lab safety challenges</p>
   </header>
 
@@ -284,6 +284,50 @@
     </div>
   </div>
 </div>
+
+<script>
+// ---------- Shared storage shim (Firebase Realtime Database via REST) ----------
+// Paste your Firebase Realtime Database URL below (no trailing slash), e.g.
+// https://your-project-default-rtdb.firebaseio.com
+const FIREBASE_DB_URL = 'https://ehs-scavengerhunt-default-rtdb.firebaseio.com';
+(function(){
+  if (window.storage) return; // inside Claude artifacts the native API exists
+  const ROOT = '/fieldhunt';
+  const esc = k => k.replace(/[.$#\[\]\/%]/g, c => '%' + c.charCodeAt(0).toString(16).padStart(2,'0'));
+  const url = (k) => FIREBASE_DB_URL + ROOT + (k ? '/' + encodeURIComponent(esc(k)) : '') + '.json';
+  async function req(u, opts){
+    if (FIREBASE_DB_URL.indexOf('PASTE_') === 0) throw new Error('Firebase URL not configured');
+    const r = await fetch(u, opts);
+    if (!r.ok) throw new Error('Storage error ' + r.status);
+    return r.json();
+  }
+  window.storage = {
+    async get(key){
+      const v = await req(url(key));
+      return v === null ? null : { key, value: v, shared: true };
+    },
+    async set(key, value){
+      await req(url(key), { method:'PUT', headers:{'Content-Type':'application/json'}, body: JSON.stringify(String(value)) });
+      return { key, value, shared: true };
+    },
+    async delete(key){
+      await req(url(key), { method:'DELETE' });
+      return { key, deleted: true, shared: true };
+    },
+    async list(prefix){
+      const o = await req(FIREBASE_DB_URL + ROOT + '.json?shallow=true');
+      const keys = Object.keys(o || {}).map(k => decodeURIComponent(k)).filter(k => !prefix || k.startsWith(prefix));
+      return { keys, prefix, shared: true };
+    },
+    // one request for all values under a prefix (used by the leaderboard)
+    async getMany(prefix){
+      const o = await req(FIREBASE_DB_URL + ROOT + '.json');
+      return Object.keys(o || {}).map(k => ({ key: decodeURIComponent(k), value: o[k] }))
+        .filter(x => !prefix || x.key.startsWith(prefix));
+    }
+  };
+})();
+</script>
 
 <script>
 const ORGANIZER_PASSCODE = 'LABSAFE2026'; // change this before sharing
@@ -512,13 +556,20 @@ async function loadLeaderboard(){
   const el = $('lbList');
   el.innerHTML = '<div class="empty">Loading…</div>';
   try{
-    const keys = await window.storage.list('sc_player:', SHARED);
-    if(!keys || !keys.keys || !keys.keys.length){ el.innerHTML = '<div class="empty">No players yet.</div>'; return; }
     const players = [];
-    for(const k of keys.keys){
-      const r = await window.storage.get(k, SHARED);
-      if(r) players.push(JSON.parse(r.value));
+    if(window.storage.getMany){
+      const rows = await window.storage.getMany('sc_player:');
+      for(const r of rows) players.push(JSON.parse(r.value));
+    } else {
+      const keys = await window.storage.list('sc_player:', SHARED);
+      if(keys && keys.keys){
+        for(const k of keys.keys){
+          const r = await window.storage.get(k, SHARED);
+          if(r) players.push(JSON.parse(r.value));
+        }
+      }
     }
+    if(!players.length){ el.innerHTML = '<div class="empty">No players yet.</div>'; return; }
     players.sort((a,b)=> b.score - a.score);
     el.innerHTML = players.map((p,i)=>`
       <div class="lb-row ${p.name===state.name?'me':''}">
